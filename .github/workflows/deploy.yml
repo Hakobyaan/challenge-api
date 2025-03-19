@@ -1,0 +1,60 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main # Trigger on push to the main branch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18 # Use the Node.js version your project requires
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Deploy to Ubuntu Server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }} # Store your SSH private key in GitHub Secrets
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }} # Store your server IP/hostname in GitHub Secrets
+          REMOTE_USER: ${{ secrets.REMOTE_USER }} # Store your server username in GitHub Secrets
+          REMOTE_DIR: ${{ secrets.REMOTE_DIR }} # Store the deployment directory on the server in GitHub Secrets
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $REMOTE_HOST >> ~/.ssh/known_hosts
+
+          # Copy files to the server
+          rsync -avz --delete ./dist/ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR
+
+          # Restart the application (using PM2 or systemd)
+          ssh $REMOTE_USER@$REMOTE_HOST "cd $REMOTE_DIR && npm install --production && pm2 restart ecosystem.config.js"
